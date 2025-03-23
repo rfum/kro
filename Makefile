@@ -205,6 +205,12 @@ publish-image: ko ## Publish the kro controller images to ghcr.io
 		$(KO) publish --bare github.com/kro-run/kro/cmd/controller \
 		--tags ${RELEASE_VERSION} --sbom=none
 
+publish-image-insecure: ko ## Publish the kro controller images to ghcr.io
+	$(WITH_GOFLAGS) KOCACHE=$(KOCACHE) KO_DOCKER_REPO=$(KO_DOCKER_REPO) \
+		GIT_COMMIT=$(GIT_COMMIT) RELEASE_VERSION=$(RELEASE_VERSION) BUILD_DATE=$(BUILD_DATE) \
+		$(KO) publish --insecure-registry --bare github.com/kro-run/kro/cmd/controller \
+		--tags ${RELEASE_VERSION} --sbom=none
+
 .PHONY: package-helm
 package-helm: ## Package Helm chart
 	cp ./config/crd/bases/* helm/crds/
@@ -241,8 +247,21 @@ deploy-kind: ko
 	$(KIND) create cluster --name ${KIND_CLUSTER_NAME}
 	$(KUBECTL) --context kind-$(KIND_CLUSTER_NAME) create namespace kro-system
 	make install
-	# This generates deployment with ko://... used in image. 
+	# This generates deployment with ko://... used in image.
 	# ko then intercepts it builds image, pushes to kind node, replaces the image in deployment and applies it
 	helm template kro ./helm --namespace kro-system --set image.pullPolicy=Never --set image.ko=true | $(KO) apply -f -
 	kubectl wait --for=condition=ready --timeout=1m pod -n kro-system -l app.kubernetes.io/component=controller
 	$(KUBECTL) --context kind-${KIND_CLUSTER_NAME} get pods -A
+
+.PHONY: deploy-kube
+deploy-kube: export KO_DOCKER_REPO=${OCI_REPO}/kro
+deploy-kube: build-image
+deploy-kube: publish-image-insecure
+	make install
+	helm template kro ./helm --create-namespace --namespace kro-system --set image.pullPolicy=IfNotPresent --set image.repository=${OCI_REPO}/kro --set image.tag=${RELEASE_VERSION}  | $(KUBECTL) apply -f -
+	$(KUBECTL) get pods -n kro-system
+
+.PHONY: cleanup-kube
+cleanup-kube:
+	make uninstall
+	$(KUBECTL) delete ns kro-system
