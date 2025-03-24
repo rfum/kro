@@ -2,7 +2,7 @@ export GIT_COMMIT ?= $(shell git rev-parse --short HEAD)
 export BUILD_DATE ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 export RELEASE_VERSION ?= dev-$(GIT_COMMIT)
 OCI_REPO ?= ghcr.io/kro-run/kro
-
+KIND_KUBECONFIG_PATH ?= /tmp/kind-config
 HELM_IMAGE ?= ${OCI_REPO}
 KO_DOCKER_REPO ?= ${OCI_REPO}/kro
 
@@ -236,8 +236,8 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 
 .PHONY: deploy-kind
 deploy-kind: export KO_DOCKER_REPO=kind.local
+deploy-kind: export KUBECONFIG=${KIND_KUBECONFIG_PATH}
 deploy-kind: ko
-	export KUBECONFIG=/tmp/kind-config
 	$(KIND) delete clusters ${KIND_CLUSTER_NAME} || true
 	$(KIND) create cluster --name ${KIND_CLUSTER_NAME}
 	$(KUBECTL) --context kind-$(KIND_CLUSTER_NAME) create namespace kro-system
